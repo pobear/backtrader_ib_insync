@@ -309,16 +309,16 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         super(IBBroker, self).stop()
         self.ibstore.stop()
 
-    def get_cash(self):
+    def getcash(self):
         # This call cannot block if no answer is available from ib
         self.cash = self.ibstore.get_acc_cash()
         return self.cash
 
-    def get_value(self, datas=None):
+    def getvalue(self, datas=None):
         self.value = self.ibstore.get_acc_value()
         return self.value
 
-    def get_position(self, data, clone=True):
+    def getposition(self, data, clone=True):
         return self.ibstore.get_position(data.tradecontract, clone=clone)
 
     def cancel(self, order):
@@ -350,7 +350,7 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         return order
 
     @staticmethod
-    def get_commission_info(data):
+    def getcommissioninfo(data):
         contract = data.tradecontract
         try:
             mult = float(contract.multiplier)
