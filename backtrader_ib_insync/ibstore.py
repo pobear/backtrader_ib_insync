@@ -18,8 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import collections
 from copy import copy
@@ -53,23 +52,24 @@ def _ts2dt(tstamp=None):
 
 
 class RTVolume(object):
-    '''Parses a tickString tickType 48 (RTVolume) event from the IB API into its
+    """Parses a tickString tickType 48 (RTVolume) event from the IB API into its
     constituent fields
 
     Supports using a "price" to simulate an RTVolume from a tickPrice event
-    '''
+    """
+
     _fields = [
-        ('price', float),
-        ('size', int),
-        ('datetime', _ts2dt),
-        ('volume', int),
-        ('vwap', float),
-        ('single', bool)
+        ("price", float),
+        ("size", int),
+        ("datetime", _ts2dt),
+        ("volume", int),
+        ("vwap", float),
+        ("single", bool),
     ]
 
-    def __init__(self, rtvol='', price=None, tmoffset=None):
+    def __init__(self, rtvol="", price=None, tmoffset=None):
         # Use a provided string or simulate a list of empty tokens
-        tokens = iter(rtvol.split(';'))
+        tokens = iter(rtvol.split(";"))
 
         # Put the tokens as attributes using the corresponding func
         for name, func in self._fields:
@@ -82,32 +82,36 @@ class RTVolume(object):
         if tmoffset is not None:
             self.datetime += tmoffset
 
+
 class MktData:
+    @staticmethod
+    async def update_ticks(ib: IB, contract, ticks, q_ticks):
+        # ticks=233 last, lastSize, rtVolume, rtTime, vwap (Time & Sales)
+        ib.reqMktData(contract, ticks)
 
-    async def update_ticks(self, ib, contract, ticks, q_ticks):
-            ib.reqMktData(contract, ticks) # ticks=233 last, lastSize, rtVolume, rtTime, vwap (Time & Sales)
+        async for tickers in ib.pendingTickersEvent:
+            for ticker in tickers:
+                q_ticks.put(ticker)
 
-            async for tickers in ib.pendingTickersEvent:
-                for ticker in tickers:
-                    q_ticks.put(ticker)
-                return
+            return
+
 
 class MetaSingleton(MetaParams):
-    '''Metaclass to make a metaclassed class a singleton'''
+    """Metaclass to make a metaclassed class a singleton"""
+
     def __init__(cls, name, bases, dct):
         super(MetaSingleton, cls).__init__(name, bases, dct)
         cls._singleton = None
 
     def __call__(cls, *args, **kwargs):
         if cls._singleton is None:
-            cls._singleton = (
-                super(MetaSingleton, cls).__call__(*args, **kwargs))
+            cls._singleton = super(MetaSingleton, cls).__call__(*args, **kwargs)
 
         return cls._singleton
 
 
 class IBStore(with_metaclass(MetaSingleton, object)):
-    '''Singleton class wrapping an ibpy ibConnection instance.
+    """Singleton class wrapping an ibpy ibConnection instance.
 
     The parameters can also be specified in the classes which use this store,
     like ``IBData`` and ``IBBroker``
@@ -167,45 +171,48 @@ class IBStore(with_metaclass(MetaSingleton, object)):
       - ``indcash`` (default: ``True``)
 
         Manage IND codes as if they were cash for price retrieval
-    '''
+    """
 
     # Set a base for the data requests (historical/realtime) to distinguish the
     # id in the error notifications from orders, where the basis (usually
     # starting at 1) is set by TWS
     REQIDBASE = 0x01000000
 
-    BrokerCls = None #getattr(sys.modules["cerebro.strategies." +classname.split('.')[0]], classname.split('.')[1])IBBroker  #None  # broker class will autoregister
+    # getattr(sys.modules["cerebro.strategies." +classname.split('.')[0]], classname.split('.')[1])IBBroker
+    # None
+    # broker class will autoregister
+    BrokerCls = None
     DataCls = None  # data class will auto register
 
     params = (
-        ('host', '127.0.0.1'),
-        ('port', 7496),
-        ('clientId', None),  # None generates a random clientid 1 -> 2^16
-        ('notifyall', False), # NOT IMPLEMENTED
-        ('_debug', False),
-        ('reconnect', 3),  # -1 forever, 0 No, > 0 number of retries
-        ('timeout', 3.0),  # timeout between reconnections
-        ('timeoffset', True),  # Use offset to server for timestamps if needed
-        ('timerefresh', 60.0),  # How often to refresh the timeoffset
-        ('indcash', True),  # Treat IND codes as CASH elements
-        ('readonly', False),  # Set to True when IB API is in read-only mode
-        ('account', ''),  # Main account to receive updates for
-     
+        ("host", "127.0.0.1"),
+        ("port", 7496),
+        ("clientId", None),  # None generates a random clientid 1 -> 2^16
+        ("notifyall", False),  # NOT IMPLEMENTED
+        ("_debug", False),
+        ("reconnect", 3),  # -1 forever, 0 No, > 0 number of retries
+        ("timeout", 3.0),  # timeout between reconnections
+        ("timeoffset", True),  # Use offset to server for timestamps if needed
+        ("timerefresh", 60.0),  # How often to refresh the timeoffset
+        ("indcash", True),  # Treat IND codes as CASH elements
+        ("readonly", False),  # Set to True when IB API is in read-only mode
+        ("account", ""),  # Main account to receive updates for
     )
 
     @classmethod
     def getdata(cls, *args, **kwargs):
-        '''Returns ``DataCls`` with args, kwargs'''
+        """Returns ``DataCls`` with args, kwargs"""
         return cls.DataCls(*args, **kwargs)
 
     @classmethod
     def getbroker(cls, *args, **kwargs):
-        '''Returns broker with *args, **kwargs from registered ``BrokerCls``'''
+        """Returns broker with *args, **kwargs from registered ``BrokerCls``"""
         return cls.BrokerCls(*args, **kwargs)
 
     def __init__(self):
         super(IBStore, self).__init__()
 
+        self.tmoffset = None
         self._env = None  # reference to cerebro for general notifications
         self.broker = None  # broker instance
         self.datas = list()  # datas that have registered over start
@@ -233,7 +240,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         self.opending = collections.defaultdict(list)  # pending transmission
         self.brackets = dict()  # confirmed brackets
-        
+
         self.last_tick = None
 
         # Use the provided clientId or a random one
@@ -256,36 +263,37 @@ class IBStore(with_metaclass(MetaSingleton, object)):
             self.account = ""
         else:
             self.account = self.p.account
-                    
+
         if self.p._debug:
             util.logToConsole(level=logging.DEBUG)
-        
+
         util.patchAsyncio()
         util.startLoop()
-        
+
         self.ib = IB()
-        
+
         self.ib.connect(
-                    host=self.p.host, port=self.p.port, 
-                    clientId=self.clientId,
-                    timeout=self.timeout,
-                    readonly=self.readonly,
-                    account=self.account,
-                    )
-        
+            host=self.p.host,
+            port=self.p.port,
+            clientId=self.clientId,
+            timeout=self.timeout,
+            readonly=self.readonly,
+            account=self.account,
+        )
+
         # This utility key function transforms a barsize into a:
         #   (Timeframe, Compression) tuple which can be sorted
         def keyfn(x):
             n, t = x.split()
             tf, comp = self._sizes[t]
-            return (tf, int(n) * comp)
+            return tf, int(n) * comp
 
         # This utility key function transforms a duration into a:
         #   (Timeframe, Compression) tuple which can be sorted
         def key2fn(x):
             n, d = x.split()
             tf = self._dur2tf[d]
-            return (tf, int(n))
+            return tf, int(n)
 
         # Generate a table of reverse durations
         self.revdur = collections.defaultdict(list)
@@ -303,7 +311,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
             self.revdur[barsize].sort(key=key2fn)
 
     def start(self, data=None, broker=None):
-        #self.reconnect(fromstart=True)  # reconnect should be an invariant
+        # self.reconnect(fromstart=True)  # reconnect should be an invariant
 
         # Datas require some processing to kickstart data reception
         if data is not None:
@@ -313,7 +321,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
             # if connection fails, get a fakeation that will force the
             # datas to try to reconnect or else bail out
-            return self.getTickerQueue(start=True)
+            return self.get_ticker_queue(start=True)
 
         elif broker is not None:
             self.broker = broker
@@ -322,12 +330,12 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         try:
             self.ib.disconnect()  # disconnect should be an invariant
         except AttributeError:
-            pass    # conn may have never been connected and lack "disconnect"
+            pass  # conn may have never been connected and lack "disconnect"
 
     def get_notifications(self):
-        '''Return the pending "store" notifications'''
+        """Return the pending "store" notifications"""
         # The background thread could keep on adding notifications. The None
-        # mark allows to identify which is the last notification to deliver
+        # mark allows to identify which is the last notification to deliver.
         self.notifs.put(None)  # put a mark
         notifs = list()
         while True:
@@ -338,76 +346,84 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         return notifs
 
-    def managedAccounts(self):
+    def get_managed_accounts(self):
         # 1st message in the stream
         self.managed_accounts = self.ib.managedAccounts()
 
         # Request time to avoid synchronization issues
-        self.reqCurrentTime()
+        self.req_current_time()
 
-    def currentTime(self,msg):
+    def current_time(self, msg):
         if not self.p.timeoffset:  # only if requested ... apply timeoffset
             return
         curtime = datetime.fromtimestamp(float(msg.time))
         with self._lock_tmoffset:
             self.tmoffset = curtime - datetime.now()
 
-        threading.Timer(self.p.timerefresh, self.reqCurrentTime).start()
+        threading.Timer(self.p.timerefresh, self.req_current_time).start()
 
     def timeoffset(self):
         with self._lock_tmoffset:
             return self.tmoffset
 
-    def reqCurrentTime(self):
+    def req_current_time(self):
         self.ib.reqCurrentTime()
 
-    def nextOrderId(self):
+    def next_order_id(self):
         # Get the next ticker using a new request value from TWS
         self.orderid = self.ib.client.getReqId()
         return self.orderid
 
-    def getTickerQueue(self, start=False):
-        '''Creates ticker/Queue for data delivery to a data feed'''
+    @staticmethod
+    def get_ticker_queue(start=False):
+        """Creates ticker/Queue for data delivery to a data feed"""
         q = queue.Queue()
         if start:
             q.put(None)
             return q
-            
+
         return q
-    
-    def getContractDetails(self, contract, maxcount=None):
-        #cds = list()
+
+    def get_contract_details(self, contract, maxcount=None):
+        # cds = list()
         cds = self.ib.reqContractDetails(contract)
- 
-        #cds.append(cd)
+
+        # cds.append(cd)
 
         if not cds or (maxcount and len(cds) > maxcount):
-            err = 'Ambiguous contract: none/multiple answers received'
+            err = "Ambiguous contract: none/multiple answers received"
             self.notifs.put((err, cds, {}))
             return None
 
         return cds
 
-    def reqHistoricalDataEx(self, contract, enddate, begindate,
-                            timeframe, compression,
-                            what=None, useRTH=False, tz='', 
-                            sessionend=None,
-                            #tickerId=None
-                            ):
-        '''
+    def req_historical_data_ex(
+        self,
+        contract,
+        enddate,
+        begindate,
+        timeframe,
+        compression,
+        what=None,
+        useRTH=False,
+        tz="",
+        sessionend=None,
+        # tickerId=None
+    ):
+        """
         Extension of the raw reqHistoricalData proxy, which takes two dates
         rather than a duration, barsize and date
 
         It uses the IB published valid duration/barsizes to make a mapping and
         spread a historical request over several historical requests if needed
-        '''
+        """
         # Keep a copy for error reporting purposes
         kwargs = locals().copy()
-        kwargs.pop('self', None)  # remove self, no need to report it
+        kwargs.pop("self", None)  # remove self, no need to report it
 
         if timeframe < TimeFrame.Seconds:
             # Ticks are not supported
-            return self.getTickerQueue(start=True)
+            return self.get_ticker_queue(start=True)
 
         if enddate is None:
             enddate = datetime.now()
@@ -415,21 +431,31 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         if begindate is None:
             duration = self.getmaxduration(timeframe, compression)
             if duration is None:
-                err = ('No duration for historical data request for '
-                       'timeframe/compresison')
+                err = (
+                    "No duration for historical data request for "
+                    "timeframe/compresison"
+                )
                 self.notifs.put((err, (), kwargs))
-                return self.getTickerQueue(start=True)
+                return self.get_ticker_queue(start=True)
             barsize = self.tfcomp_to_size(timeframe, compression)
             if barsize is None:
-                err = ('No supported barsize for historical data request for '
-                       'timeframe/compresison')
+                err = (
+                    "No supported barsize for historical data request for "
+                    "timeframe/compresison"
+                )
                 self.notifs.put((err, (), kwargs))
-                return self.getTickerQueue(start=True)
+                return self.get_ticker_queue(start=True)
 
-            return self.reqHistoricalData(contract=contract, enddate=enddate,
-                                          duration=duration, barsize=barsize,
-                                          what=what, useRTH=useRTH, tz=tz,
-                                          sessionend=sessionend)
+            return self.req_historical_data(
+                contract=contract,
+                enddate=enddate,
+                duration=duration,
+                barsize=barsize,
+                what=what,
+                useRTH=useRTH,
+                tz=tz,
+                sessionend=sessionend,
+            )
 
         # Check if the requested timeframe/compression is supported by IB
         durations = self.getdurations(timeframe, compression)
@@ -463,70 +489,81 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         barsize = self.tfcomp_to_size(timeframe, compression)
 
-        if contract.secType in ['CASH', 'CFD']:
-            #self.iscash[tickerId] = 1  # msg.field code
+        if contract.secType in ["CASH", "CFD"]:
+            # self.iscash[tickerId] = 1  # msg.field code
             if not what:
-                what = 'BID'  # default for cash unless otherwise specified
+                what = "BID"  # default for cash unless otherwise specified
 
-        elif contract.secType in ['IND'] and self.p.indcash:
-            #self.iscash[tickerId] = 4  # msg.field code
+        elif contract.secType in ["IND"] and self.p.indcash:
+            # self.iscash[tickerId] = 4  # msg.field code
             pass
 
-        what = what or 'TRADES'
-        
-        q = self.getTickerQueue()
+        what = what or "TRADES"
+
+        q = self.get_ticker_queue()
 
         histdata = self.ib.reqHistoricalData(
-                                contract,
-                                intdate.strftime('%Y%m%d %H:%M:%S') + ' GMT',
-                                duration,
-                                barsize,
-                                what,
-                                useRTH,
-                                2) # dateformat 1 for string, 2 for unix time in seconds
+            contract,
+            intdate.strftime("%Y%m%d %H:%M:%S") + " GMT",
+            duration,
+            barsize,
+            what,
+            useRTH,
+            2,
+        )  # dateformat 1 for string, 2 for unix time in seconds
         for msg in histdata:
             q.put(msg)
-        
+
         return q
 
-    def reqHistoricalData(self, contract, enddate, duration, barsize,
-                          what=None, useRTH=False, tz='', sessionend=None):
-        '''Proxy to reqHistorical Data'''
+    def req_historical_data(
+        self,
+        contract,
+        enddate,
+        duration,
+        barsize,
+        what=None,
+        useRTH=False,
+        tz="",
+        sessionend=None,
+    ):
+        """Proxy to reqHistorical Data"""
 
         # get a ticker/queue for identification/data delivery
-        q = self.getTickerQueue()
+        q = self.get_ticker_queue()
 
-        if contract.secType in ['CASH', 'CFD']:
-            #self.iscash[tickerId] = True
+        if contract.secType in ["CASH", "CFD"]:
+            # self.iscash[tickerId] = True
             if not what:
-                what = 'BID'  # TRADES doesn't work
-            elif what == 'ASK':
-                #self.iscash[tickerId] = 2
+                what = "BID"  # TRADES doesn't work
+            elif what == "ASK":
+                # self.iscash[tickerId] = 2
                 pass
         else:
-            what = what or 'TRADES'
+            what = what or "TRADES"
 
         # split barsize "x time", look in sizes for (tf, comp) get tf
-        #tframe = self._sizes[barsize.split()[1]][0]
+        # tframe = self._sizes[barsize.split()[1]][0]
         # self.histfmt[tickerId] = tframe >= TimeFrame.Days
         # self.histsend[tickerId] = sessionend
         # self.histtz[tickerId] = tz
 
         histdata = self.ib.reqHistoricalData(
-                            contract,
-                            enddate.strftime('%Y%m%d %H:%M:%S') + ' GMT',
-                            duration,
-                            barsize,
-                            what,
-                            useRTH,
-                            2) # dateformat 1 for string, 2 for unix time in seconds
+            contract,
+            enddate.strftime("%Y%m%d %H:%M:%S") + " GMT",
+            duration,
+            barsize,
+            what,
+            useRTH,
+            2,
+        )  # dateformat 1 for string, 2 for unix time in seconds
         for msg in histdata:
             q.put(msg)
 
         return q
 
-    def reqRealTimeBars(self, contract, useRTH=False, duration=5):
-        '''Creates a request for (5 seconds) Real Time Bars
+    def req_real_time_bars(self, contract, useRTH=False, duration=5):
+        """Creates a request for (5 seconds) Real Time Bars
 
         Params:
           - contract: a ib.ext.Contract.Contract intance
@@ -535,51 +572,50 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         Returns:
           - a Queue the client can wait on to receive a RTVolume instance
-        '''
+        """
         # get a ticker/queue for identification/data delivery
-        q = self.getTickerQueue()
+        q = self.get_ticker_queue()
 
-        rtb = self.ib.reqRealTimeBars(contract, duration, 
-                                      'MIDPOINT', useRTH=useRTH)
+        rtb = self.ib.reqRealTimeBars(contract, duration, "MIDPOINT", useRTH=useRTH)
         self.ib.sleep(duration)
         for bar in rtb:
             q.put(bar)
         return q
 
-    def reqMktData(self, contract, what=None):
-        '''Creates a MarketData subscription
+    def req_mkt_data(self, contract, what=None):
+        """Creates a MarketData subscription
 
         Params:
-          - contract: a ib.ext.Contract.Contract intance
+          - contract: ib.ext.Contract.Contract instance
 
         Returns:
           - a Queue the client can wait on to receive a RTVolume instance
-        '''
+        """
         # get a ticker/queue for identification/data delivery
-        q = self.getTickerQueue()
-        ticks = '233'  # request RTVOLUME tick delivered over tickString
+        q = self.get_ticker_queue()
+        ticks = "233"  # request RTVOLUME tick delivered over tickString
 
-        if contract.secType in ['CASH', 'CFD']:
-            #self.iscash[tickerId] = True
-            ticks = ''  # cash markets do not get RTVOLUME
-            if what == 'ASK':
-                #self.iscash[tickerId] = 2
+        if contract.secType in ["CASH", "CFD"]:
+            # self.iscash[tickerId] = True
+            ticks = ""  # cash markets do not get RTVOLUME
+            if what == "ASK":
+                # self.iscash[tickerId] = 2
                 pass
 
         # q.put(None)  # to kickstart backfilling
         # Can request 233 also for cash ... nothing will arrive
-        
+
         md = MktData()
         q_ticks = queue.Queue()
-        
+
         util.run(md.update_ticks(self.ib, contract, ticks, q_ticks))
-                  
+
         while not q_ticks.empty():
             ticker = q_ticks.get()
             for tick in ticker.ticks:
                 # https://interactivebrokers.github.io/tws-api/tick_types.html
-                if tick != self.last_tick: #last price
-                    #print(str(tick.time) +" >> " + str(tick.price))
+                if tick != self.last_tick:  # last price
+                    # print(str(tick.time) +" >> " + str(tick.price))
                     self.last_tick = tick
                     q.put(tick)
 
@@ -588,157 +624,350 @@ class IBStore(with_metaclass(MetaSingleton, object)):
     # The _durations are meant to calculate the needed historical data to
     # perform backfilling at the start of a connetion or a connection is lost.
     # Using a timedelta as a key allows to quickly find out which bar size
-    # bar size (values in the tuples int the dict) can be used.
+    # Bar sizes (values in the tuples int the dict) can be used.
 
-    _durations = dict([
-        # 60 seconds - 1 min
-        ('60 S',
-         ('1 secs', '5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min')),
-
-        # 120 seconds - 2 mins
-        ('120 S',
-         ('1 secs', '5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins')),
-
-        # 180 seconds - 3 mins
-        ('180 S',
-         ('1 secs', '5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins')),
-
-        # 300 seconds - 5 mins
-        ('300 S',
-         ('1 secs', '5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins')),
-
-        # 600 seconds - 10 mins
-        ('600 S',
-         ('1 secs', '5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins')),
-
-        # 900 seconds - 15 mins
-        ('900 S',
-         ('1 secs', '5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins')),
-
-        # 1200 seconds - 20 mins
-        ('1200 S',
-         ('1 secs', '5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins')),
-
-        # 1800 seconds - 30 mins
-        ('1800 S',
-         ('1 secs', '5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins')),
-
-        # 3600 seconds - 1 hour
-        ('3600 S',
-         ('5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins',
-          '1 hour')),
-
-        # 7200 seconds - 2 hours
-        ('7200 S',
-         ('5 secs', '10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins',
-          '1 hour', '2 hours')),
-
-        # 10800 seconds - 3 hours
-        ('10800 S',
-         ('10 secs', '15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins',
-          '1 hour', '2 hours', '3 hours')),
-
-        # 14400 seconds - 4 hours
-        ('14400 S',
-         ('15 secs', '30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins',
-          '1 hour', '2 hours', '3 hours', '4 hours')),
-
-        # 28800 seconds - 8 hours
-        ('28800 S',
-         ('30 secs',
-          '1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins',
-          '1 hour', '2 hours', '3 hours', '4 hours', '8 hours')),
-
-        # 1 days
-        ('1 D',
-         ('1 min', '2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins',
-          '1 hour', '2 hours', '3 hours', '4 hours', '8 hours',
-          '1 day')),
-
-        # 2 days
-        ('2 D',
-         ('2 mins', '3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins',
-          '1 hour', '2 hours', '3 hours', '4 hours', '8 hours',
-          '1 day')),
-
-        # 1 weeks
-        ('1 W',
-         ('3 mins', '5 mins', '10 mins', '15 mins',
-          '20 mins', '30 mins',
-          '1 hour', '2 hours', '3 hours', '4 hours', '8 hours',
-          '1 day', '1 W')),
-
-        # 2 weeks
-        ('2 W',
-         ('15 mins', '20 mins', '30 mins',
-          '1 hour', '2 hours', '3 hours', '4 hours', '8 hours',
-          '1 day', '1 W')),
-
-        # 1 months
-        ('1 M',
-         ('30 mins',
-          '1 hour', '2 hours', '3 hours', '4 hours', '8 hours',
-          '1 day', '1 W', '1 M')),
-
-        # 2+ months
-        ('2 M', ('1 day', '1 W', '1 M')),
-        ('3 M', ('1 day', '1 W', '1 M')),
-        ('4 M', ('1 day', '1 W', '1 M')),
-        ('5 M', ('1 day', '1 W', '1 M')),
-        ('6 M', ('1 day', '1 W', '1 M')),
-        ('7 M', ('1 day', '1 W', '1 M')),
-        ('8 M', ('1 day', '1 W', '1 M')),
-        ('9 M', ('1 day', '1 W', '1 M')),
-        ('10 M', ('1 day', '1 W', '1 M')),
-        ('11 M', ('1 day', '1 W', '1 M')),
-
-        # 1+ years
-        ('1 Y',  ('1 day', '1 W', '1 M')),
-    ])
+    _durations = dict(
+        [
+            # 60 seconds - 1 min
+            ("60 S", ("1 secs", "5 secs", "10 secs", "15 secs", "30 secs", "1 min")),
+            # 120 seconds - 2 mins
+            (
+                "120 S",
+                (
+                    "1 secs",
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                ),
+            ),
+            # 180 seconds - 3 mins
+            (
+                "180 S",
+                (
+                    "1 secs",
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                ),
+            ),
+            # 300 seconds - 5 mins
+            (
+                "300 S",
+                (
+                    "1 secs",
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                ),
+            ),
+            # 600 seconds - 10 mins
+            (
+                "600 S",
+                (
+                    "1 secs",
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                ),
+            ),
+            # 900 seconds - 15 mins
+            (
+                "900 S",
+                (
+                    "1 secs",
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                ),
+            ),
+            # 1200 seconds - 20 mins
+            (
+                "1200 S",
+                (
+                    "1 secs",
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                ),
+            ),
+            # 1800 seconds - 30 mins
+            (
+                "1800 S",
+                (
+                    "1 secs",
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                ),
+            ),
+            # 3600 seconds - 1 hour
+            (
+                "3600 S",
+                (
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                ),
+            ),
+            # 7200 seconds - 2 hours
+            (
+                "7200 S",
+                (
+                    "5 secs",
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                ),
+            ),
+            # 10800 seconds - 3 hours
+            (
+                "10800 S",
+                (
+                    "10 secs",
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                    "3 hours",
+                ),
+            ),
+            # 14400 seconds - 4 hours
+            (
+                "14400 S",
+                (
+                    "15 secs",
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                    "3 hours",
+                    "4 hours",
+                ),
+            ),
+            # 28800 seconds - 8 hours
+            (
+                "28800 S",
+                (
+                    "30 secs",
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                    "3 hours",
+                    "4 hours",
+                    "8 hours",
+                ),
+            ),
+            # 1 days
+            (
+                "1 D",
+                (
+                    "1 min",
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                    "3 hours",
+                    "4 hours",
+                    "8 hours",
+                    "1 day",
+                ),
+            ),
+            # 2 days
+            (
+                "2 D",
+                (
+                    "2 mins",
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                    "3 hours",
+                    "4 hours",
+                    "8 hours",
+                    "1 day",
+                ),
+            ),
+            # 1 weeks
+            (
+                "1 W",
+                (
+                    "3 mins",
+                    "5 mins",
+                    "10 mins",
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                    "3 hours",
+                    "4 hours",
+                    "8 hours",
+                    "1 day",
+                    "1 W",
+                ),
+            ),
+            # 2 weeks
+            (
+                "2 W",
+                (
+                    "15 mins",
+                    "20 mins",
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                    "3 hours",
+                    "4 hours",
+                    "8 hours",
+                    "1 day",
+                    "1 W",
+                ),
+            ),
+            # 1 months
+            (
+                "1 M",
+                (
+                    "30 mins",
+                    "1 hour",
+                    "2 hours",
+                    "3 hours",
+                    "4 hours",
+                    "8 hours",
+                    "1 day",
+                    "1 W",
+                    "1 M",
+                ),
+            ),
+            # 2+ months
+            ("2 M", ("1 day", "1 W", "1 M")),
+            ("3 M", ("1 day", "1 W", "1 M")),
+            ("4 M", ("1 day", "1 W", "1 M")),
+            ("5 M", ("1 day", "1 W", "1 M")),
+            ("6 M", ("1 day", "1 W", "1 M")),
+            ("7 M", ("1 day", "1 W", "1 M")),
+            ("8 M", ("1 day", "1 W", "1 M")),
+            ("9 M", ("1 day", "1 W", "1 M")),
+            ("10 M", ("1 day", "1 W", "1 M")),
+            ("11 M", ("1 day", "1 W", "1 M")),
+            # 1+ years
+            ("1 Y", ("1 day", "1 W", "1 M")),
+        ]
+    )
 
     # Sizes allow for quick translation from bar sizes above to actual
     # timeframes to make a comparison with the actual data
     _sizes = {
-        'secs': (TimeFrame.Seconds, 1),
-        'min': (TimeFrame.Minutes, 1),
-        'mins': (TimeFrame.Minutes, 1),
-        'hour': (TimeFrame.Minutes, 60),
-        'hours': (TimeFrame.Minutes, 60),
-        'day': (TimeFrame.Days, 1),
-        'W': (TimeFrame.Weeks, 1),
-        'M': (TimeFrame.Months, 1),
+        "secs": (TimeFrame.Seconds, 1),
+        "min": (TimeFrame.Minutes, 1),
+        "mins": (TimeFrame.Minutes, 1),
+        "hour": (TimeFrame.Minutes, 60),
+        "hours": (TimeFrame.Minutes, 60),
+        "day": (TimeFrame.Days, 1),
+        "W": (TimeFrame.Weeks, 1),
+        "M": (TimeFrame.Months, 1),
     }
 
     _dur2tf = {
-        'S': TimeFrame.Seconds,
-        'D': TimeFrame.Days,
-        'W': TimeFrame.Weeks,
-        'M': TimeFrame.Months,
-        'Y': TimeFrame.Years,
+        "S": TimeFrame.Seconds,
+        "D": TimeFrame.Days,
+        "W": TimeFrame.Weeks,
+        "M": TimeFrame.Months,
+        "Y": TimeFrame.Years,
     }
 
-    def getdurations(self,  timeframe, compression):
+    def getdurations(self, timeframe, compression):
         key = (timeframe, compression)
         if key not in self.revdur:
             return []
@@ -754,54 +983,55 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         return None
 
-    def tfcomp_to_size(self, timeframe, compression):
+    @staticmethod
+    def tfcomp_to_size(timeframe, compression):
         if timeframe == TimeFrame.Months:
-            return '{} M'.format(compression)
+            return "{} M".format(compression)
 
         if timeframe == TimeFrame.Weeks:
-            return '{} W'.format(compression)
+            return "{} W".format(compression)
 
         if timeframe == TimeFrame.Days:
             if not compression % 7:
-                return '{} W'.format(compression // 7)
+                return "{} W".format(compression // 7)
 
-            return '{} day'.format(compression)
+            return "{} day".format(compression)
 
         if timeframe == TimeFrame.Minutes:
             if not compression % 60:
                 hours = compression // 60
-                return ('{} hour'.format(hours)) + ('s' * (hours > 1))
+                return ("{} hour".format(hours)) + ("s" * (hours > 1))
 
-            return ('{} min'.format(compression)) + ('s' * (compression > 1))
+            return ("{} min".format(compression)) + ("s" * (compression > 1))
 
         if timeframe == TimeFrame.Seconds:
-            return '{} secs'.format(compression)
+            return "{} secs".format(compression)
 
         # Microseconds or ticks
         return None
 
-    def dt_plus_duration(self, dt, duration):
+    @staticmethod
+    def dt_plus_duration(dt, duration):
         size, dim = duration.split()
         size = int(size)
-        if dim == 'S':
+        if dim == "S":
             return dt + timedelta(seconds=size)
 
-        if dim == 'D':
+        if dim == "D":
             return dt + timedelta(days=size)
 
-        if dim == 'W':
+        if dim == "W":
             return dt + timedelta(days=size * 7)
 
-        if dim == 'M':
+        if dim == "M":
             month = dt.month - 1 + size  # -1 to make it 0 based, readd below
             years, month = divmod(month, 12)
             return dt.replace(year=dt.year + years, month=month + 1)
 
-        if dim == 'Y':
+        if dim == "Y":
             return dt.replace(year=dt.year + size)
 
         return dt  # could do nothing with it ... return it intact
-
 
     # def histduration(self, dt1, dt2):
     #     # Given two dates calculates the smallest possible duration according
@@ -859,9 +1089,11 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
     #     return '1 Y'  # to keep the table clean
 
-    def makecontract(self, symbol, sectype, exch, curr,
-                     expiry='', strike=0.0, right='', mult=1):
-        '''returns a contract from the parameters without check'''
+    @staticmethod
+    def make_contract(
+        symbol, sectype, exch, curr, expiry="", strike=0.0, right="", mult=1
+    ):
+        """returns a contract from the parameters without check"""
 
         contract = Contract()
 
@@ -870,9 +1102,9 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         contract.exchange = exch
         if curr:
             contract.currency = curr
-        if sectype in ['FUT', 'OPT', 'FOP']:
+        if sectype in ["FUT", "OPT", "FOP"]:
             contract.lastTradeDateOrContractMonth = expiry
-        if sectype in ['OPT', 'FOP']:
+        if sectype in ["OPT", "FOP"]:
             contract.strike = strike
             contract.right = right
         if mult:
@@ -880,74 +1112,72 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         return contract
 
-    def cancelOrder(self, orderid):
-        '''Proxy to cancelOrder'''
-        self.ib.cancelOrder(orderid)
+    def cancel_order(self, order_id):
+        """Proxy to cancelOrder"""
+        self.ib.cancelOrder(order_id)
 
-
-    def placeOrder(self, orderid, contract, order):
-        '''Proxy to placeOrder'''        
-        trade = self.ib.placeOrder(contract, order)  
+    def place_order(self, order_id, contract, order):
+        """Proxy to placeOrder"""
+        trade = self.ib.placeOrder(contract, order)
         while not trade.isDone():
             self.ib.waitOnUpdate()
         return trade
-        
-    def reqTrades(self):
-        '''Proxy to Trades'''
+
+    def req_trades(self):
+        """Proxy to Trades"""
         return self.ib.trades()
 
-    def reqPositions(self):
-        '''Proxy to reqPositions'''
+    def req_positions(self):
+        """Proxy to reqPositions"""
         return self.ib.reqPositions()
-    
-    def getposition(self, contract, clone=False):
-        # Lock access to the position dicts. This is called from main thread
+
+    def get_position(self, contract, clone=False):
+        # Lock accessing to the position dicts. This is called from main thread
         # and updates could be happening in the background
-        #with self._lock_pos:
+        # with self._lock_pos:
         position = self.positions[contract.conId]
         if clone:
             return copy(position)
 
         return position
 
-    def reqAccountUpdates(self, subscribe=True, account=None):
-        '''Proxy to reqAccountUpdates
+    def req_account_updates(self, subscribe=True, account=None):
+        """Proxy to reqAccountUpdates
 
         If ``account`` is ``None``, wait for the ``managedAccounts`` message to
         set the account codes
-        '''
+        """
         if account is None:
-            #self._event_managed_accounts.wait()
-            self.managedAccounts()
+            # self._event_managed_accounts.wait()
+            self.get_managed_accounts()
             account = self.managed_accounts[0]
 
-        #self.ib.reqAccountUpdates(subscribe, bytes(account))
-        self.updateAccountValue()
+        # self.ib.reqAccountUpdates(subscribe, bytes(account))
+        self.update_account_value()
 
-
-    def updateAccountValue(self):
-        # Lock access to the dicts where values are updated. This happens in a
+    def update_account_value(self):
+        # Lock accessing to the dicts where values are updated. This happens in a
         # sub-thread and could kick it at anytime
-        #with self._lock_accupd:
-        #if self.connected():
+        # with self._lock_accupd:
+        # if self.connected():
         ret = self.ib.accountValues()
-        
+
         for msg in ret:
             try:
-                value = float(msg.value)   
+                value = float(msg.value)
             except ValueError:
                 value = msg.value
 
             self.acc_upds[msg.account][msg.tag][msg.currency] = value
 
-            if msg.tag == 'NetLiquidation':
+            if msg.tag == "NetLiquidation":
                 # NetLiquidationByCurrency and currency == 'BASE' is the same
                 self.acc_value[msg.account] = value
-            elif msg.tag == 'TotalCashBalance' and msg.currency == 'BASE':
+            elif msg.tag == "TotalCashBalance" and msg.currency == "BASE":
                 self.acc_cash[msg.account] = value
 
     def get_acc_values(self, account=None):
-        '''Returns all account value infos sent by TWS during regular updates
+        """Returns all account value infos sent by TWS during regular updates
         Waits for at least 1 successful download
 
         If ``account`` is ``None`` then a dictionary with accounts as keys will
@@ -955,13 +1185,13 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         If account is specified or the system has only 1 account the dictionary
         corresponding to that account is returned
-        '''
+        """
         # Wait for at least 1 account update download to have been finished
         # before the account infos can be returned to the calling client
         # if self.connected():
         #     self._event_accdownload.wait()
         # Lock access to acc_cash to avoid an event intefering
-        #with self._updacclock:
+        # with self._updacclock:
         if account is None:
             # wait for the managedAccount Messages
             # if self.connected():
@@ -984,7 +1214,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         return self.acc_upds.copy()
 
     def get_acc_value(self, account=None):
-        '''Returns the net liquidation value sent by TWS during regular updates
+        """Returns the net liquidation value sent by TWS during regular updates
         Waits for at least 1 successful download
 
         If ``account`` is ``None`` then a dictionary with accounts as keys will
@@ -992,13 +1222,13 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         If account is specified or the system has only 1 account the dictionary
         corresponding to that account is returned
-        '''
+        """
         # Wait for at least 1 account update download to have been finished
         # before the value can be returned to the calling client
         # if self.connected():
         #     self._event_accdownload.wait()
         # Lock access to acc_cash to avoid an event intefering
-        #with self._lock_accupd:
+        # with self._lock_accupd:
         if account is None:
             # wait for the managedAccount Messages
             # if self.connected():
@@ -1021,7 +1251,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         return float()
 
     def get_acc_cash(self, account=None):
-        '''Returns the total cash value sent by TWS during regular updates
+        """Returns the total cash value sent by TWS during regular updates
         Waits for at least 1 successful download
 
         If ``account`` is ``None`` then a dictionary with accounts as keys will
@@ -1029,18 +1259,18 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         If account is specified or the system has only 1 account the dictionary
         corresponding to that account is returned
-        '''
+        """
         # Wait for at least 1 account update download to have been finished
         # before the cash can be returned to the calling client'
         # if self.connected():
         #     self._event_accdownload.wait()
-            # result = [v for v in self.ib.accountValues() \
-            #           if v.tag == 'TotalCashBalance' and v.currency == 'BASE']
+        # result = [v for v in self.ib.accountValues() \
+        #           if v.tag == 'TotalCashBalance' and v.currency == 'BASE']
         # Lock access to acc_cash to avoid an event intefering
-            
-        #with self._lock_accupd:
+
+        # with self._lock_accupd:
         if account is None:
-            #wait for the managedAccount Messages
+            # wait for the managedAccount Messages
             # if self.connected():
             #     self._event_managed_accounts.wait()
 

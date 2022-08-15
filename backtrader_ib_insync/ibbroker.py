@@ -18,8 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import collections
 from copy import copy
@@ -30,12 +29,19 @@ import uuid
 # import ib.ext.Order
 # import ib.opt as ibopt
 
-#from ib_insync import *
+# from ib_insync import *
 import ib_insync
 
 from backtrader.feed import DataBase
-from backtrader import (TimeFrame, num2date, date2num, BrokerBase,
-                        Order, OrderBase, OrderData)
+from backtrader import (
+    TimeFrame,
+    num2date,
+    date2num,
+    BrokerBase,
+    Order,
+    OrderBase,
+    OrderData,
+)
 from backtrader.utils.py3 import bytes, bstr, with_metaclass, queue, MAXFLOAT
 from backtrader.metabase import MetaParams
 from backtrader.comminfo import CommInfoBase
@@ -45,7 +51,7 @@ from backtrader.comminfo import CommInfoBase
 
 from .ibstore import IBStore
 
-#bytes = bstr  # py2/3 need for ibpy
+# bytes = bstr  # py2/3 need for ibpy
 
 
 # class IBOrderState(object):
@@ -70,7 +76,7 @@ from .ibstore import IBStore
 
 
 class IBOrder(OrderBase, ib_insync.order.Order):
-    '''Subclasses the IBPy order to provide the minimum extra functionality
+    """Subclasses the IBPy order to provide the minimum extra functionality
     needed to be compatible with the internally defined orders
 
     Once ``OrderBase`` has processed the parameters, the __init__ method takes
@@ -92,34 +98,36 @@ class IBOrder(OrderBase, ib_insync.order.Order):
 
     This would be done almost always from the ``Buy`` and ``Sell`` methods of
     the ``Strategy`` subclass being used in ``Cerebro``
-    '''
+    """
 
     def __str__(self):
-        '''Get the printout from the base class and add some ib.Order specific
-        fields'''
+        """Get the printout from the base class and add some ib.Order specific
+        fields"""
         basetxt = super(IBOrder, self).__str__()
-        tojoin = [basetxt]
-        tojoin.append('Ref: {}'.format(self.ref))
-        tojoin.append('orderId: {}'.format(self.orderId))
-        tojoin.append('Action: {}'.format(self.action))
-        tojoin.append('Size (ib): {}'.format(self.totalQuantity))
-        tojoin.append('Lmt Price: {}'.format(self.lmtPrice))
-        tojoin.append('Aux Price: {}'.format(self.auxPrice))
-        tojoin.append('OrderType: {}'.format(self.orderType))
-        tojoin.append('Tif (Time in Force): {}'.format(self.tif))
-        tojoin.append('GoodTillDate: {}'.format(self.goodTillDate))
-        return '\n'.join(tojoin)
+        tojoin = [
+            basetxt,
+            "Ref: {}".format(self.ref),
+            "orderId: {}".format(self.orderId),
+            "Action: {}".format(self.action),
+            "Size (ib): {}".format(self.totalQuantity),
+            "Lmt Price: {}".format(self.lmtPrice),
+            "Aux Price: {}".format(self.auxPrice),
+            "OrderType: {}".format(self.orderType),
+            "Tif (Time in Force): {}".format(self.tif),
+            "GoodTillDate: {}".format(self.goodTillDate),
+        ]
+        return "\n".join(tojoin)
 
     # Map backtrader order types to the ib specifics
     _IBOrdTypes = {
-        None: 'MKT',  # default
-        Order.Market: 'MKT',
-        Order.Limit:'LMT',
-        Order.Close:'MOC',
-        Order.Stop: 'STP',
-        Order.StopLimit: 'STPLMT',
-        Order.StopTrail: 'TRAIL',
-        Order.StopTrailLimit: 'TRAIL LIMIT',
+        None: "MKT",  # default
+        Order.Market: "MKT",
+        Order.Limit: "LMT",
+        Order.Close: "MOC",
+        Order.Stop: "STP",
+        Order.StopLimit: "STPLMT",
+        Order.StopTrail: "TRAIL",
+        Order.StopTrailLimit: "TRAIL LIMIT",
     }
 
     def __init__(self, action, **kwargs):
@@ -129,14 +137,14 @@ class IBOrder(OrderBase, ib_insync.order.Order):
         # cancellation
         self._willexpire = False
 
-        self.ordtype = self.Buy if action == 'BUY' else self.Sell
+        self.ordtype = self.Buy if action == "BUY" else self.Sell
 
         super(IBOrder, self).__init__()
         ib_insync.order.Order.__init__(self)  # Invoke 2nd base class
 
         # Now fill in the specific IB parameters
         self.orderType = self._IBOrdTypes[self.exectype]
-        
+
         self.permid = 0
 
         # 'B' or 'S' should be enough
@@ -181,24 +189,24 @@ class IBOrder(OrderBase, ib_insync.order.Order):
 
         # Time In Force: DAY, GTC, IOC, GTD
         if self.valid is None:
-            tif = 'GTC'  # Good til cancelled
+            tif = "GTC"  # Good til cancelled
         elif isinstance(self.valid, (datetime, date)):
-            tif = 'GTD'  # Good til date
-            self.m_goodTillDate = self.valid.strftime('%Y%m%d %H:%M:%S')
+            tif = "GTD"  # Good til date
+            self.m_goodTillDate = self.valid.strftime("%Y%m%d %H:%M:%S")
         elif isinstance(self.valid, (timedelta,)):
             if self.valid == self.DAY:
-                tif = 'DAY'
+                tif = "DAY"
             else:
-                tif = 'GTD'  # Good til date
+                tif = "GTD"  # Good til date
                 valid = datetime.now() + self.valid  # .now, using localtime
-                self.goodTillDate = valid.strftime('%Y%m%d %H:%M:%S')
+                self.goodTillDate = valid.strftime("%Y%m%d %H:%M:%S")
 
         elif self.valid == 0:
-            tif = 'DAY'
+            tif = "DAY"
         else:
-            tif = 'GTD'  # Good til date
+            tif = "GTD"  # Good til date
             valid = num2date(self.valid)
-            self.goodTillDate = valid.strftime('%Y%m%d %H:%M:%S')
+            self.goodTillDate = valid.strftime("%Y%m%d %H:%M:%S")
 
         self.tif = tif
 
@@ -207,43 +215,43 @@ class IBOrder(OrderBase, ib_insync.order.Order):
 
         # pass any custom arguments to the order
         for k in kwargs:
-            setattr(self, (not hasattr(self, k)) * 'm_' + k, kwargs[k])
+            setattr(self, (not hasattr(self, k)) * "m_" + k, kwargs[k])
 
 
 class IBCommInfo(CommInfoBase):
-    '''
+    """
     Commissions are calculated by ib, but the trades calculations in the
     ```Strategy`` rely on the order carrying a CommInfo object attached for the
     calculation of the operation cost and value.
 
-    These are non-critical informations, but removing them from the trade could
-    break existing usage and it is better to provide a CommInfo objet which
+    These are non-critical information, but removing them from the trade could
+    break existing usage. and it is better to provide a CommInfo objet which
     enables those calculations even if with approvimate values.
 
     The margin calculation is not a known in advance information with IB
     (margin impact can be gotten from OrderState objects) and therefore it is
-    left as future exercise to get it'''
+    left as future exercise to get it"""
 
     def getvaluesize(self, size, price):
         # In real life the margin approaches the price
         return abs(size) * price
 
     def getoperationcost(self, size, price):
-        '''Returns the needed amount of cash an operation would cost'''
+        """Returns the needed amount of cash an operation would cost"""
         # Same reasoning as above
         return abs(size) * price
 
 
 class MetaIBBroker(BrokerBase.__class__):
     def __init__(cls, name, bases, dct):
-        '''Class has already been created ... register'''
+        """Class has already been created ... register"""
         # Initialize the class
         super(MetaIBBroker, cls).__init__(name, bases, dct)
         IBStore.BrokerCls = cls
 
 
 class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
-    '''Broker implementation for Interactive Brokers.
+    """Broker implementation for Interactive Brokers.
 
     This class maps the orders/positions from Interactive Brokers to the
     internal API of ``backtrader``.
@@ -264,7 +272,8 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         management which would also allow tradeid with multiple ids (profit and
         loss would also be calculated locally), but could be considered to be
         defeating the purpose of working with a live broker
-    '''
+    """
+
     params = ()
 
     def __init__(self, **kwargs):
@@ -275,24 +284,24 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         self.startingcash = self.cash = 0.0
         self.startingvalue = self.value = 0.0
 
-        #self._lock_orders = threading.Lock()  # control access
+        # self._lock_orders = threading.Lock()  # control access
         # self.orderbyid = dict()  # orders by order id
         # self.executions = dict()  # notified executions
         # self.ordstatus = collections.defaultdict(dict)
-        
+
         self.open_orders = list()
-        self.notifs = queue.Queue()  # holds orders which are notified
+        self.notifs = queue.Queue()  # hold orders which are notified
         self.tonotify = collections.deque()  # hold oids to be notified
 
     def start(self):
         super(IBBroker, self).start()
-        
+
         self.ibstore.start(broker=self)
 
         self.startingcash = self.cash = 0.0
         self.startingvalue = self.value = 0.0
-        self.ibstore.reqAccountUpdates()
-            
+        self.ibstore.req_account_updates()
+
         self.startingcash = self.cash = self.ibstore.get_acc_cash()
         self.startingvalue = self.value = self.ibstore.get_acc_value()
 
@@ -300,22 +309,23 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         super(IBBroker, self).stop()
         self.ibstore.stop()
 
-    def getcash(self):
+    def get_cash(self):
         # This call cannot block if no answer is available from ib
         self.cash = self.ibstore.get_acc_cash()
         return self.cash
 
-    def getvalue(self, datas=None):
+    def get_value(self, datas=None):
         self.value = self.ibstore.get_acc_value()
         return self.value
 
-    def getposition(self, data, clone=True):
-        return self.ibstore.getposition(data.tradecontract, clone=clone)
+    def get_position(self, data, clone=True):
+        return self.ibstore.get_position(data.tradecontract, clone=clone)
 
     def cancel(self, order):
-        return self.ibstore.cancelOrder(order.orderId)
-        
-    def orderstatus(self, order):
+        return self.ibstore.cancel_order(order.orderId)
+
+    @staticmethod
+    def get_order_status(order):
         return order.status
 
     def submit(self, order):
@@ -326,67 +336,102 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
             order.ocaGroup = uuid.uuid4()
         else:
             order.ocaGroup = self.orderbyid[order.oco.orderId].ocaGroup
-        
-        trade = self.ibstore.placeOrder(order.orderId, order.data.tradecontract, order)
+
+        trade = self.ibstore.place_order(order.orderId, order.data.tradecontract, order)
 
         self.notify(order)
-        
+
         if trade.orderStatus.status == self.FILLED:
             order.completed()
             self.notify(order)
         else:
             self.open_orders.append(order)
-            
+
         return order
 
-    def getcommissioninfo(self, data):
+    @staticmethod
+    def get_commission_info(data):
         contract = data.tradecontract
         try:
             mult = float(contract.multiplier)
         except (ValueError, TypeError):
             mult = 1.0
 
-        stocklike = contract.secType not in ('FUT', 'OPT', 'FOP',)
+        stocklike = contract.secType not in (
+            "FUT",
+            "OPT",
+            "FOP",
+        )
 
         return IBCommInfo(mult=mult, stocklike=stocklike)
 
-    def _makeorder(self, action, owner, data,
-                   size, price=None, plimit=None,
-                   exectype=None, valid=None,
-                   tradeid=0, **kwargs):
+    def _makeorder(
+        self,
+        action,
+        owner,
+        data,
+        size,
+        price=None,
+        plimit=None,
+        exectype=None,
+        valid=None,
+        tradeid=0,
+        **kwargs
+    ):
 
-        order = IBOrder(action, owner=owner, data=data,
-                        size=size, price=price, pricelimit=plimit,
-                        exectype=exectype, valid=valid,
-                        tradeid=tradeid,
-                        clientId=self.ibstore.clientId,
-                        orderId=self.ibstore.nextOrderId(),
-                        **kwargs)
+        order = IBOrder(
+            action,
+            owner=owner,
+            data=data,
+            size=size,
+            price=price,
+            pricelimit=plimit,
+            exectype=exectype,
+            valid=valid,
+            tradeid=tradeid,
+            clientId=self.ibstore.clientId,
+            orderId=self.ibstore.next_order_id(),
+            **kwargs
+        )
 
-        order.addcomminfo(self.getcommissioninfo(data))
+        order.addcomminfo(self.get_commission_info(data))
         return order
 
-    def buy(self, owner, data,
-            size, price=None, plimit=None,
-            exectype=None, valid=None, tradeid=0,
-            **kwargs):
+    def buy(
+        self,
+        owner,
+        data,
+        size,
+        price=None,
+        plimit=None,
+        exectype=None,
+        valid=None,
+        tradeid=0,
+        **kwargs
+    ):
 
         order = self._makeorder(
-                        'BUY',
-                        owner, data, size, price, plimit, exectype, valid, tradeid,
-                        **kwargs)
+            "BUY", owner, data, size, price, plimit, exectype, valid, tradeid, **kwargs
+        )
 
         return self.submit(order)
 
-    def sell(self, owner, data,
-             size, price=None, plimit=None,
-             exectype=None, valid=None, tradeid=0,
-             **kwargs):
+    def sell(
+        self,
+        owner,
+        data,
+        size,
+        price=None,
+        plimit=None,
+        exectype=None,
+        valid=None,
+        tradeid=0,
+        **kwargs
+    ):
 
         order = self._makeorder(
-                        'SELL',
-                        owner, data, size, price, plimit, exectype, valid, tradeid,
-                        **kwargs)
+            "SELL", owner, data, size, price, plimit, exectype, valid, tradeid, **kwargs
+        )
 
         return self.submit(order)
 
@@ -401,32 +446,47 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
 
         return None
 
-    (SUBMITTED, FILLED, CANCELLED, INACTIVE,
-             PENDINGSUBMIT, PENDINGCANCEL, PRESUBMITTED) = (
-                 'Submitted', 'Filled', 'Cancelled', 'Inactive',
-                 'PendingSubmit', 'PendingCancel', 'PreSubmitted',)
-                 
+    (
+        SUBMITTED,
+        FILLED,
+        CANCELLED,
+        INACTIVE,
+        PENDINGSUBMIT,
+        PENDINGCANCEL,
+        PRESUBMITTED,
+    ) = (
+        "Submitted",
+        "Filled",
+        "Cancelled",
+        "Inactive",
+        "PendingSubmit",
+        "PendingCancel",
+        "PreSubmitted",
+    )
+
     def next(self):
         self.notifs.put(None)  # mark notificatino boundary
 
         if len(self.open_orders) > 0:
-            trades = self.ibstore.reqTrades()
-            
+            trades = self.ibstore.req_trades()
+
             for order in self.open_orders:
                 for trade in trades:
                     if order.orderId == trade.order.orderId:
-            
-                        if trade.orderStatus.status == self.SUBMITTED \
-                            and trade.filled == 0:
+
+                        if (
+                            trade.orderStatus.status == self.SUBMITTED
+                            and trade.filled == 0
+                        ):
                             if order.status != order.Accepted:
                                 order.accept(self)
                                 self.notify(order)
-                
+
                         elif trade.orderStatus.status == self.CANCELLED:
                             # duplicate detection
                             if order.status in [order.Cancelled, order.Expired]:
                                 pass
-                
+
                             if order._willexpire:
                                 # An openOrder has been seen with PendingCancel/Cancelled
                                 # and this happens when an order expires
@@ -436,7 +496,7 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
                                 order.cancel()
                             self.open_orders.remove(order)
                             self.notify(order)
-                
+
                         elif trade.orderStatus.status == self.PENDINGCANCEL:
                             # In theory this message should not be seen according to the docs,
                             # but other messages like PENDINGSUBMIT which are similarly
@@ -447,12 +507,12 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
                                 # Pure user cancellation happens without an openOrder
                                 order.cancel()
                             self.open_orders.remove(order)
-                            self.notify(order)                
+                            self.notify(order)
                             # We do nothing because the situation is handled with the 202 error
                             # code if no orderStatus with CANCELLED is seen
                             # order.cancel()
                             # self.notify(order)
-                
+
                         elif trade.orderStatus.status == self.INACTIVE:
                             # This is a tricky one, because the instances seen have led to
                             # order rejection in the demo, but according to the docs there may
@@ -462,15 +522,18 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
                             order.reject(self)
                             self.open_orders.remove(order)
                             self.notify(order)
-                
+
                         elif trade.orderStatus.status in [self.SUBMITTED, self.FILLED]:
                             # These two are kept inside the order until execdetails and
                             # commission are all in place - commission is the last to come
                             order.completed()
                             self.open_orders.remove(order)
-                            self.notify(order)                 
-                
-                        elif trade.orderStatus.status in [self.PENDINGSUBMIT, self.PRESUBMITTED]:
+                            self.notify(order)
+
+                        elif trade.orderStatus.status in [
+                            self.PENDINGSUBMIT,
+                            self.PRESUBMITTED,
+                        ]:
                             # According to the docs, these statuses can only be set by the
                             # programmer but the demo account sent it back at random times with
                             # "filled"
