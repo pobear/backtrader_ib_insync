@@ -3,5 +3,5 @@ A ib_insync based DataStore, Broker functionality and Datafeed processing for ba
 
 Alpha+ version but all implemented (or I think so)
 
-pip install git+https://github.com/ultra1971/backtrader_ib_insync
+pip install git+https://github.com/pobear/backtrader_ib_insync
 
