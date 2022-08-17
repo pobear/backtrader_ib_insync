@@ -43,7 +43,6 @@ class MetaIBData(DataBase.__class__):
 
 
 class IBData(with_metaclass(MetaIBData, DataBase)):
-
     """Interactive Brokers Data Feed.
 
     Supports the following contract specifications in parameter ``dataname``:
@@ -264,7 +263,8 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         self._state = None
         self.contract = None
         self._usertvol = None
-        self.q = None
+        self.qlive = None
+        self.qhist = None
         self.ibstore = self._store(**kwargs)
         self.precontract = self.parsecontract(self.p.dataname)
         self.pretradecontract = self.parsecontract(self.p.tradename)
@@ -358,7 +358,7 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         contractdetails if it exists"""
         super(IBData, self).start()
         # Kickstart store and get queue to wait on
-        self.q = self.ibstore.start(data=self)
+        self.qlive = self.ibstore.start(data=self)
 
         self._usertvol = not self.p.rtbar
         tfcomp = (self._timeframe, self._compression)
@@ -423,193 +423,66 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         self.ibstore.stop()
 
     def haslivedata(self):
-        return bool(self.q)
+        return bool(self.qlive)
 
     def _load(self):
         if self.contract is None or self._state == self._ST_OVER:
             return False  # nothing can be done
 
+        # print("# state={}, size={}".format(self._state, len(self.lines.datetime)))
+
         while True:
-
-            # if self._state == self._ST_HISTORBACK:
-            if self._state != self._ST_LIVE:
-                if not self.q.empty():
-                    msg = self.q.get()  # timeout=self.p.qcheck)
-                    ret = self._load_rtbar(msg, hist=True, hist_tzo=self.p.hist_tzo)
-                    if ret:
-                        return True
-                else:
-                    self.put_notification(self.LIVE)
-                    self._state = self._ST_LIVE
-
-                # if self._laststatus != self.LIVE:
-                #     if self.qlive.qsize() <= 1:  # very short live queue
-                #         self.put_notification(self.LIVE)
-
-                # if self._usertvol and self._state == self._ST_HISTORBACK:
-                #     ret = self._load_rtvolume(msg)
-                #     #ret = self._load_rtbar(msg)
-                # else:
-                #     ret = self._load_rtbar(msg)
-
             if self._state == self._ST_LIVE:
-
                 if self._usertvol:
-                    self.q = self.ibstore.req_mkt_data(self.contract, self.p.what)
+                    self.qlive = self.ibstore.req_mkt_data(self.contract, self.p.what)
                 else:
-                    self.q = self.ibstore.req_real_time_bars(self.contract)
+                    self.qlive = self.ibstore.req_real_time_bars(self.contract)
 
-                if not self.q.empty():
-                    msg = self.q.get()  # timeout=self.p.qcheck)
-
-                    # except queue.Empty:
-                    #     if True:
-                    #         self.stop() #????
-                    #         return None
-
-                    # if self._laststatus != self.LIVE:
-                    #     if self.qlive.qsize() <= 1:  # very short live queue
-                    #         self.put_notification(self.LIVE)
+                if not self.qlive.empty():
+                    msg = self.qlive.get()
 
                     if self._usertvol:
                         ret = self._load_rtvolume(msg)
-                        # ret = self._load_rtbar(msg)
                     else:
                         ret = self._load_rtbar(
                             msg, hist=False, hist_tzo=self.p.hist_tzo
                         )
                     if ret:
                         return True
+            elif self._state == self._ST_HISTORBACK:
+                if not self.qhist.empty():
+                    msg = self.qhist.get()  # timeout=self.p.qcheck)
+                    ret = self._load_rtbar(msg, hist=True, hist_tzo=self.p.hist_tzo)
+                    if ret:
+                        return True
+                # not historical only, continute live data.
+                elif not self.p.historical:
+                    self.put_notification(self.LIVE)
+                    self._state = self._ST_LIVE
+                    continue
+                # historical only
+                else:
+                    self.put_notification(self.DISCONNECTED)
+                    return False
+            elif self._state == self._ST_FROM:
+                if not self.p.backfill_from.next():
+                    # additional data source is consumed
+                    self._state = self._ST_START
+                    continue
 
-                # # Code invalidated until further checking is done
-                #     if not self._statelivereconn:
-                #         return None  # indicate timeout situation
+                # copy lines of the same name
+                for alias in self.lines.getlinealiases():
+                    lsrc = getattr(self.p.backfill_from.lines, alias)
+                    ldst = getattr(self.lines, alias)
 
-                #     # Awaiting data and nothing came in - fake it up until now
-                #     dtend = self.num2date(date2num(datetime.datetime.utcnow()))
-                #     dtbegin = None
-                #     if len(self) > 1:
-                #         dtbegin = self.num2date(self.datetime[-1])
+                    print("{}[0]={}".format(alias, lsrc[0]))
+                    ldst[0] = lsrc[0]
 
-                #     self.qhist = self.ibstore.reqHistoricalDataEx(
-                #         contract=self.contract,
-                #         enddate=dtend, begindate=dtbegin,
-                #         timeframe=self._timeframe,
-                #         compression=self._compression,
-                #         what=self.p.what, useRTH=self.p.useRTH, tz=self._tz,
-                #         sessionend=self.p.sessionend)
+                return True
 
-                #     if self._laststatus != self.DELAYED:
-                #         self.put_notification(self.DELAYED)
-
-                #     self._state = self._ST_HISTORBACK
-
-                #     self._statelivereconn = False
-                #     continue  # to reenter the loop and hit st_historback
-
-                # if msg is None:  # Conn broken during historical/backfilling
-                #     self._subcription_valid = False
-                #     self.put_notification(self.CONNBROKEN)
-                #     # Try to reconnect
-                #     if not self.ibstore.reconnect(resub=True):
-                #         self.put_notification(self.DISCONNECTED)
-                #         return False  # failed
-
-                #     self._statelivereconn = self.p.backfill
-                #     continue
-
-                # elif isinstance(msg, integer_types):
-                #     # Unexpected notification for historical data skip it
-                #     # May be a "not connected not yet processed"
-                #     self.put_notification(self.UNKNOWN, msg)
-                #     continue
-
-                # Process the message according to expected return type
-
-                # could not load bar ... go and get new one
-                # continue
-
-                # Fall through to processing reconnect - try to backfill
-                # self._storedmsg[None] = msg  # keep the msg
-
-                # else do a backfill
-                # if self._laststatus != self.DELAYED:
-                #     self.put_notification(self.DELAYED)
-
-                # dtend = None
-                # if len(self) > 1:
-                #     # len == 1 ... forwarded for the 1st time
-                #     # get begin date in utc-like format like msg.datetime
-                #     dtbegin = num2date(self.datetime[-1])
-                # elif self.fromdate > float('-inf'):
-                #     dtbegin = num2date(self.fromdate)
-                # else:  # 1st bar and no begin set
-                #     # passing None to fetch max possible in 1 request
-                #     dtbegin = None
-
-                # dtend = msg.time if self._usertvol else msg.time
-
-                # self.qhist = self.ibstore.reqHistoricalDataEx(
-                #     contract=self.contract, enddate=dtend, begindate=dtbegin,
-                #     timeframe=self._timeframe, compression=self._compression,
-                #     what=self.p.what, useRTH=self.p.useRTH, tz=self._tz,
-                #     sessionend=self.p.sessionend)
-
-                # self._state = self._ST_HISTORBACK
-                # self._statelivereconn = False  # no longer in live
-            #     continue
-
-            # elif self._state == self._ST_HISTORBACK:
-            #     if not self.qhist.empty():
-            #         msg = self.qhist.get()
-            #         if msg is None:  # Conn broken during historical/backfilling
-            #             # Situation not managed. Simply bail out
-            #             #self._subcription_valid = False
-            #             self.put_notification(self.DISCONNECTED)
-            #             return False  # error management cancelled the queue
-
-            #         elif isinstance(msg, integer_types):
-            #             # Unexpected notification for historical data skip it
-            #             # May be a "not connected not yet processed"
-            #             self.put_notification(self.UNKNOWN, msg)
-            #             continue
-
-            #         if msg.date is not None:
-            #             if self._load_rtbar(msg, hist=True):
-            #                 return True  # loading worked
-
-            #             # the date is from overlapping historical request
-            #             continue
-
-            #     # End of histdata
-            #     else:
-            #          if self.p.historical:  # only historical
-            #             self.put_notification(self.DISCONNECTED)
-
-            #         # Live is also wished - go for it
-            #          self._state = self._ST_LIVE
-            #         #continue
-
-            #          return False  # end of historical
-
-            # elif self._state == self._ST_FROM:
-            #     if not self.p.backfill_from.next():
-            #         # additional data source is consumed
-            #         self._state = self._ST_START
-            #         continue
-
-            #     # copy lines of the same name
-            #     for alias in self.lines.getlinealiases():
-            #         lsrc = getattr(self.p.backfill_from.lines, alias)
-            #         ldst = getattr(self.lines, alias)
-
-            #         ldst[0] = lsrc[0]
-
-            #     return True
-
-            # elif self._state == self._ST_START:
-            #     if not self._st_start():
-            #         return False
+            elif self._state == self._ST_START:
+                if not self._st_start():
+                    return False
 
     def _st_start(self):
         if self.p.historical:
@@ -622,7 +495,7 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
             if self.fromdate > float("-inf"):
                 dtbegin = num2date(self.fromdate)
 
-            self.q = self.ibstore.req_historical_data_ex(
+            self.qhist = self.ibstore.req_historical_data_ex(
                 contract=self.contract,
                 enddate=dtend,
                 begindate=dtbegin,
@@ -636,38 +509,29 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
 
             self._state = self._ST_HISTORBACK
             return True  # continue before
+        elif self.p.backfill_start:
+            self.put_notification(self.DELAYED)
 
-        # Live is requested
-        # if not self.ibstore.reconnect(resub=True):
-        # if 1 == 2:
-        #     self.put_notification(self.DISCONNECTED)
-        #     self._state = self._ST_OVER
-        #     return False  # failed - was so
-        else:
-            self._statelivereconn = self.p.backfill_start
-            if self.p.backfill_start:
-                dtend = None
-                if self.p.backfill_from is not None:
-                    dtbegin = num2date(self.p.backfill_from)
-                    self._state = self._ST_FROM
-                else:
-                    dtbegin = None
-                    self._state = self._ST_START
-                self.q = self.ibstore.req_historical_data_ex(
-                    contract=self.contract,
-                    enddate=dtend,
-                    begindate=dtbegin,
-                    timeframe=self._timeframe,
-                    compression=self._compression,
-                    what=self.p.what,
-                    useRTH=self.p.useRTH,
-                    tz=self._tz,
-                    sessionend=self.p.sessionend,
-                )
-                self.put_notification(self.DELAYED)
+            dtline = self.lines.datetime
+            dtbegin = num2date(dtline[-1]) if len(dtline) > 1 else None
+            print("st_start:dtbegin={}".format(dtbegin))
+            dtend = None
+            self.qhist = self.ibstore.req_historical_data_ex(
+                contract=self.contract,
+                enddate=dtend,
+                begindate=dtbegin,
+                timeframe=self._timeframe,
+                compression=self._compression,
+                what=self.p.what,
+                useRTH=self.p.useRTH,
+                tz=self._tz,
+                sessionend=self.p.sessionend,
+            )
 
-            else:
-                self._state = self._ST_LIVE
+            self._state = self._ST_HISTORBACK
+            return True
+
+        self._state = self._ST_LIVE
         return True  # no return before - implicit continue
 
     def _load_rtbar(self, rtbar, hist=False, hist_tzo=None):
@@ -675,7 +539,6 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         # contains open/high/low/close/volume prices
         # The historical data has the same data but with 'date' instead of
         # 'time' for datetime
-
         if hist:
             if hist_tzo is None:
                 hist_tzo = time.timezone / 3600
@@ -697,6 +560,9 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         self.lines.close[0] = rtbar.close
         self.lines.volume[0] = rtbar.volume
         self.lines.openinterest[0] = 0
+
+        print("rtbar:d={}, h={}, l={}, c={}, o={}, v={}".format(num2date(dt), rtbar.high, rtbar.low, rtbar.close,
+                                                                self.lines.open[0], rtbar.volume))
 
         return True
 

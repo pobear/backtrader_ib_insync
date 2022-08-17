@@ -267,8 +267,8 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         if self.p._debug:
             util.logToConsole(level=logging.DEBUG)
 
-        util.patchAsyncio()
-        util.startLoop()
+        # util.patchAsyncio()
+        # util.startLoop()
 
         self.ib = IB()
 
@@ -470,13 +470,13 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         # Get the best possible duration to reduce number of requests
         duration = None
-        # for dur in durations:
-        #     intdate = self.dt_plus_duration(begindate, dur)
-        #     if intdate >= enddate:
-        #         intdate = enddate
-        #         duration = dur  # begin -> end fits in single request
-        #         break
-        intdate = begindate
+        for dur in durations:
+            intdate = self.dt_plus_duration(begindate, dur)
+            if intdate >= enddate:
+                intdate = enddate
+                duration = dur  # begin -> end fits in single request
+                break
+        # intdate = begindate
 
         if duration is None:  # no duration large enough to fit the request
             duration = durations[-1]
@@ -502,6 +502,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         q = self.get_ticker_queue()
 
+        print("rqhisex:enddate={}, duration=".format(intdate.strftime("%Y%m%d %H:%M:%S") + " GMT"), duration)
         histdata = self.ib.reqHistoricalData(
             contract,
             intdate.strftime("%Y%m%d %H:%M:%S") + " GMT",
@@ -547,7 +548,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         # self.histfmt[tickerId] = tframe >= TimeFrame.Days
         # self.histsend[tickerId] = sessionend
         # self.histtz[tickerId] = tz
-
+        print("rqhis:enddate={}".format(enddate.strftime("%Y%m%d %H:%M:%S") + " GMT"))
         histdata = self.ib.reqHistoricalData(
             contract,
             enddate.strftime("%Y%m%d %H:%M:%S") + " GMT",
