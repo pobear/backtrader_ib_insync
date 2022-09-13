@@ -563,13 +563,15 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         return q
 
-    def req_real_time_bars(self, contract, useRTH=False, duration=5):
+    def req_real_time_bars(self, contract, what="MIDPOINT", useRTH=False, duration=5):
         """Creates a request for (5 seconds) Real Time Bars
 
         Params:
           - contract: a ib.ext.Contract.Contract intance
           - useRTH: (default: False) passed to TWS
           - duration: (default: 5) passed to TWS
+          - what: Specifies the source for constructing bars.
+                Can be 'TRADES', 'MIDPOINT', 'BID' or 'ASK'.
 
         Returns:
           - a Queue the client can wait on to receive a RTVolume instance
@@ -577,7 +579,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         # get a ticker/queue for identification/data delivery
         q = self.get_ticker_queue()
 
-        rtb = self.ib.reqRealTimeBars(contract, duration, "MIDPOINT", useRTH=useRTH)
+        rtb = self.ib.reqRealTimeBars(contract, duration, whatToShow=what, useRTH=useRTH)
         self.ib.sleep(duration)
         for bar in rtb:
             q.put(bar)

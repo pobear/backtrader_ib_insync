@@ -434,9 +434,9 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         while True:
             if self._state == self._ST_LIVE:
                 if self._usertvol:
-                    self.qlive = self.ibstore.req_mkt_data(self.contract, self.p.what)
+                    self.qlive = self.ibstore.req_mkt_data(self.contract, what=self.p.what)
                 else:
-                    self.qlive = self.ibstore.req_real_time_bars(self.contract)
+                    self.qlive = self.ibstore.req_real_time_bars(self.contract, what=self.p.what)
 
                 if not self.qlive.empty():
                     msg = self.qlive.get()
