@@ -21,24 +21,17 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import collections
-from copy import copy
-from datetime import date, datetime, timedelta
-import inspect
-import itertools
+import logging
 import random
 import threading
-import time
-import bisect
-import asyncio
-
-import logging
-
-from ib_insync import Contract, IB, util
+from copy import copy
+from datetime import datetime, timedelta
 
 from backtrader import TimeFrame, Position
 from backtrader.metabase import MetaParams
+from backtrader.utils import AutoDict
 from backtrader.utils.py3 import queue, with_metaclass, long
-from backtrader.utils import AutoDict, UTC
+from ib_insync import Contract, IB, util
 
 
 def _ts2dt(tstamp=None):
@@ -349,6 +342,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
     def get_managed_accounts(self):
         # 1st message in the stream
         self.managed_accounts = self.ib.managedAccounts()
+        print("managed_accounts={}".format(self.managed_accounts))
 
         # Request time to avoid synchronization issues
         self.req_current_time()
@@ -426,7 +420,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
             return self.get_ticker_queue(start=True)
 
         if enddate is None:
-            enddate = datetime.now()
+            enddate = datetime.utcnow()
 
         if begindate is None:
             duration = self.getmaxduration(timeframe, compression)
@@ -469,7 +463,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         #     tickerId, q = self.reuseQueue(tickerId)  # reuse q for old tickerId
 
         # Get the best possible duration to reduce number of requests
-        duration = None
+        duration, intdate = None, None
         for dur in durations:
             intdate = self.dt_plus_duration(begindate, dur)
             if intdate >= enddate:
@@ -548,7 +542,8 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         # self.histfmt[tickerId] = tframe >= TimeFrame.Days
         # self.histsend[tickerId] = sessionend
         # self.histtz[tickerId] = tz
-        print("rqhis:enddate={}".format(enddate.strftime("%Y%m%d %H:%M:%S") + " GMT"))
+        print("rqhis:contract={}, enddate={}, duration={}, barsize={}, what={}, useRTH={}".format(
+            contract, enddate.strftime("%Y%m%d %H:%M:%S") + " GMT", duration, barsize, what, useRTH))
         histdata = self.ib.reqHistoricalData(
             contract,
             enddate.strftime("%Y%m%d %H:%M:%S") + " GMT",
@@ -979,6 +974,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
     def getmaxduration(self, timeframe, compression):
         key = (timeframe, compression)
+        # print("key={}, revdur={}".format(key, self.revdur))
         try:
             return self.revdur[key][-1]
         except (KeyError, IndexError):
@@ -1132,7 +1128,13 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
     def req_positions(self):
         """Proxy to reqPositions"""
-        return self.ib.reqPositions()
+        positions = self.ib.reqPositions()
+        print("positions={}".format(positions))
+        for p in positions:
+            position = Position(p.position, p.avgCost)
+            self.positions[p.contract.conId] = position
+
+        return positions
 
     def get_position(self, contract, clone=False):
         # Lock accessing to the position dicts. This is called from main thread

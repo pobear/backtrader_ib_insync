@@ -305,6 +305,8 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         self.startingcash = self.cash = self.ibstore.get_acc_cash()
         self.startingvalue = self.value = self.ibstore.get_acc_value()
 
+        self.ibstore.req_positions()
+
     def stop(self):
         super(IBBroker, self).stop()
         self.ibstore.stop()
@@ -394,7 +396,7 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
             **kwargs
         )
 
-        order.addcomminfo(self.get_commission_info(data))
+        order.addcomminfo(self.getcommissioninfo(data))
         return order
 
     def buy(
