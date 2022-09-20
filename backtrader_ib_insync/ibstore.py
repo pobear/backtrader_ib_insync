@@ -27,6 +27,7 @@ import threading
 from copy import copy
 from datetime import datetime, timedelta
 
+import ib_insync
 from backtrader import TimeFrame, Position
 from backtrader.metabase import MetaParams
 from backtrader.utils import AutoDict
@@ -496,7 +497,12 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         q = self.get_ticker_queue()
 
-        print("rqhisex:enddate={}, duration=".format(intdate.strftime("%Y%m%d %H:%M:%S") + " GMT"), duration)
+        print(
+            "rqhisex:enddate={}, duration=".format(
+                intdate.strftime("%Y%m%d %H:%M:%S") + " GMT"
+            ),
+            duration,
+        )
         histdata = self.ib.reqHistoricalData(
             contract,
             intdate.strftime("%Y%m%d %H:%M:%S") + " GMT",
@@ -542,8 +548,16 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         # self.histfmt[tickerId] = tframe >= TimeFrame.Days
         # self.histsend[tickerId] = sessionend
         # self.histtz[tickerId] = tz
-        print("rqhis:contract={}, enddate={}, duration={}, barsize={}, what={}, useRTH={}".format(
-            contract, enddate.strftime("%Y%m%d %H:%M:%S") + " GMT", duration, barsize, what, useRTH))
+        print(
+            "rqhis:contract={}, enddate={}, duration={}, barsize={}, what={}, useRTH={}".format(
+                contract,
+                enddate.strftime("%Y%m%d %H:%M:%S") + " GMT",
+                duration,
+                barsize,
+                what,
+                useRTH,
+            )
+        )
         histdata = self.ib.reqHistoricalData(
             contract,
             enddate.strftime("%Y%m%d %H:%M:%S") + " GMT",
@@ -574,7 +588,9 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         # get a ticker/queue for identification/data delivery
         q = self.get_ticker_queue()
 
-        rtb = self.ib.reqRealTimeBars(contract, duration, whatToShow=what, useRTH=useRTH)
+        rtb = self.ib.reqRealTimeBars(
+            contract, duration, whatToShow=what, useRTH=useRTH
+        )
         self.ib.sleep(duration)
         for bar in rtb:
             q.put(bar)
@@ -1118,13 +1134,16 @@ class IBStore(with_metaclass(MetaSingleton, object)):
     def place_order(self, order_id, contract, order):
         """Proxy to placeOrder"""
         trade = self.ib.placeOrder(contract, order)
-        while not trade.isDone():
-            self.ib.waitOnUpdate()
+        # while not trade.isDone():
+        #     self.ib.waitOnUpdate()
         return trade
 
     def req_trades(self):
         """Proxy to Trades"""
         return self.ib.trades()
+
+    def req_open_orders(self):
+        return self.ib.openOrders()
 
     def req_positions(self):
         """Proxy to reqPositions"""

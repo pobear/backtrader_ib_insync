@@ -434,9 +434,13 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         while True:
             if self._state == self._ST_LIVE:
                 if self._usertvol:
-                    self.qlive = self.ibstore.req_mkt_data(self.contract, what=self.p.what)
+                    self.qlive = self.ibstore.req_mkt_data(
+                        self.contract, what=self.p.what
+                    )
                 else:
-                    self.qlive = self.ibstore.req_real_time_bars(self.contract, what=self.p.what)
+                    self.qlive = self.ibstore.req_real_time_bars(
+                        self.contract, what=self.p.what
+                    )
 
                 if not self.qlive.empty():
                     msg = self.qlive.get()
@@ -561,8 +565,16 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         self.lines.volume[0] = rtbar.volume
         self.lines.openinterest[0] = 0
 
-        print("rtbar:d={}, h={}, l={}, c={}, o={}, v={}".format(num2date(dt), rtbar.high, rtbar.low, rtbar.close,
-                                                                self.lines.open[0], rtbar.volume))
+        print(
+            "rtbar:d={}, h={}, l={}, c={}, o={}, v={}".format(
+                num2date(dt),
+                rtbar.high,
+                rtbar.low,
+                rtbar.close,
+                self.lines.open[0],
+                rtbar.volume,
+            )
+        )
 
         return True
 

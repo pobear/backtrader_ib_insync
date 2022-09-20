@@ -51,6 +51,7 @@ from backtrader.comminfo import CommInfoBase
 
 from .ibstore import IBStore
 
+
 # bytes = bstr  # py2/3 need for ibpy
 
 
@@ -145,7 +146,7 @@ class IBOrder(OrderBase, ib_insync.order.Order):
         # Now fill in the specific IB parameters
         self.orderType = self._IBOrdTypes[self.exectype]
 
-        self.permid = 0
+        self.permId = kwargs["permId"] if kwargs.get("permId") else 0
 
         # 'B' or 'S' should be enough
         self.action = action
@@ -186,6 +187,8 @@ class IBOrder(OrderBase, ib_insync.order.Order):
         self.transmit = self.transmit
         if self.parent is not None:
             self.parentId = self.parent.orderId
+        elif kwargs.get("parentId"):
+            self.parentId = kwargs["parentId"]
 
         # Time In Force: DAY, GTC, IOC, GTD
         if self.valid is None:
@@ -212,6 +215,8 @@ class IBOrder(OrderBase, ib_insync.order.Order):
 
         # OCA
         self.ocaType = 1  # Cancel all remaining orders with block
+        if kwargs.get("ocaGroup"):
+            self.ocaGroup = kwargs["ocaGroup"]
 
         # pass any custom arguments to the order
         for k in kwargs:
@@ -276,6 +281,17 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
 
     params = ()
 
+    # Map the ib specifics to backtrader order types
+    _BBOrderTypes = {
+        "MKT": Order.Market,
+        "LMT": Order.Limit,
+        "MOC": Order.Close,
+        "STP": Order.Stop,
+        "STPLMT": Order.StopLimit,
+        "TRAIL": Order.StopTrail,
+        "TRAIL LIMIT": Order.StopTrailLimit,
+    }
+
     def __init__(self, **kwargs):
         super(IBBroker, self).__init__()
 
@@ -311,6 +327,60 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         super(IBBroker, self).stop()
         self.ibstore.stop()
 
+    def get_open_orders(self, owner, data):
+        ib_open_orders = self.ibstore.req_open_orders()
+
+        for ib_order in ib_open_orders:
+            self.open_orders.append(self.get_btorder(owner, data, ib_order))
+
+        return self.open_orders
+
+    def get_btorder(self, owner, data, ib_order, modify_price=None):
+        exectype = self._BBOrderTypes[ib_order.orderType]
+
+        price = pricelimit = trailamount = trailpercent = None
+        if exectype == Order.Limit:
+            price = ib_order.lmtPrice
+        elif exectype == Order.Stop:
+            price = ib_order.auxPrice
+        elif exectype == Order.StopLimit:
+            price = ib_order.auxPrice
+            pricelimit = ib_order.lmtPrice
+        elif exectype == Order.StopTrail:
+            if ib_order.auxPrice:
+                trailamount = ib_order.auxPrice
+            if ib_order.trailingPercent:
+                trailpercent = ib_order.trailingPercent / 100
+        elif exectype == Order.StopTrailLimit:
+            price = ib_order.trailStopPrice
+            pricelimit = ib_order.lmtPrice
+            if ib_order.auxPrice:
+                trailamount = ib_order.auxPrice
+            if ib_order.trailingPercent:
+                trailpercent = ib_order.trailingPercent / 100
+
+        valid = None
+        if ib_order.goodTillDate:
+            valid = datetime.strptime(ib_order.goodTillDate, "%Y%m%d %H:%M:%S")
+
+        return IBOrder(
+            owner=owner,
+            data=data,
+            orderId=ib_order.orderId,
+            action=ib_order.action,
+            size=ib_order.totalQuantity,
+            price=modify_price if modify_price is not None else price,
+            pricelimit=pricelimit,
+            trailamount=trailamount,
+            trailpercent=trailpercent,
+            exectype=exectype,
+            clientId=self.ibstore.clientId,
+            parentId=ib_order.parentId,
+            valid=valid,
+            permId=ib_order.permId,
+            ocaGroup=ib_order.ocaGroup,
+        )
+
     def getcash(self):
         # This call cannot block if no answer is available from ib
         self.cash = self.ibstore.get_acc_cash()
@@ -333,16 +403,42 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
     def submit(self, order):
         order.submit(self)
 
-        # ocoize if needed
-        if order.oco is None:  # Generate a UniqueId
-            order.ocaGroup = uuid.uuid4()
-        else:
-            order.ocaGroup = self.orderbyid[order.oco.orderId].ocaGroup
+        if not order.ocaGroup:
+            # ocoize if needed
+            if order.oco is None:  # Generate a UniqueId
+                order.ocaGroup = uuid.uuid4()
+            else:
+                order.ocaGroup = self.orderbyid[order.oco.orderId].ocaGroup
 
         trade = self.ibstore.place_order(order.orderId, order.data.tradecontract, order)
 
         self.notify(order)
 
+        if trade.orderStatus.status == self.FILLED:
+            order.completed()
+            self.notify(order)
+        else:
+            self.open_orders.append(order)
+
+        return order
+
+    def modify(self, order, price):
+        for ord in self.open_orders:
+            if ord.orderId == order.orderId:
+                self.open_orders.remove(ord)
+                break
+
+        order.created.price = price
+
+        # 止损单价格修改
+        if order.exectype == Order.Stop:
+            order.auxPrice = price
+        # 限制单价格修改
+        elif order.exectype == Order.Limit:
+            order.lmtPrice = price
+
+        trade = self.ibstore.place_order(order.orderId, order.data.tradecontract, order)
+        print("modify order: trade={}".format(trade))
         if trade.orderStatus.status == self.FILLED:
             order.completed()
             self.notify(order)
