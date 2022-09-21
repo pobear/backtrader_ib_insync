@@ -422,20 +422,28 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
 
         return order
 
-    def modify(self, order, price):
+    def modify(self, order, price, pricelimit=None):
         for ord in self.open_orders:
             if ord.orderId == order.orderId:
                 self.open_orders.remove(ord)
                 break
 
-        order.created.price = price
+        # 修改Backtrader的Order相关价格
+        order.price = order.created.price = price
+        if pricelimit is not None:
+            order.pricelimit = order.created.pricelimit = pricelimit
 
-        # 止损单价格修改
+        # IB Order止损单价格修改
         if order.exectype == Order.Stop:
             order.auxPrice = price
-        # 限制单价格修改
+        # IB Order限制单价格修改
         elif order.exectype == Order.Limit:
             order.lmtPrice = price
+        # IB Order限制止损单价格修改
+        elif order.exectype == Order.StopLimit:
+            order.auxPrice = price
+            if pricelimit is not None:
+                order.lmtPrice = pricelimit
 
         trade = self.ibstore.place_order(order.orderId, order.data.tradecontract, order)
         print("modify order: trade={}".format(trade))
@@ -464,17 +472,17 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         return IBCommInfo(mult=mult, stocklike=stocklike)
 
     def _makeorder(
-        self,
-        action,
-        owner,
-        data,
-        size,
-        price=None,
-        plimit=None,
-        exectype=None,
-        valid=None,
-        tradeid=0,
-        **kwargs
+            self,
+            action,
+            owner,
+            data,
+            size,
+            price=None,
+            plimit=None,
+            exectype=None,
+            valid=None,
+            tradeid=0,
+            **kwargs
     ):
 
         order = IBOrder(
@@ -496,16 +504,16 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         return order
 
     def buy(
-        self,
-        owner,
-        data,
-        size,
-        price=None,
-        plimit=None,
-        exectype=None,
-        valid=None,
-        tradeid=0,
-        **kwargs
+            self,
+            owner,
+            data,
+            size,
+            price=None,
+            plimit=None,
+            exectype=None,
+            valid=None,
+            tradeid=0,
+            **kwargs
     ):
 
         order = self._makeorder(
@@ -515,16 +523,16 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         return self.submit(order)
 
     def sell(
-        self,
-        owner,
-        data,
-        size,
-        price=None,
-        plimit=None,
-        exectype=None,
-        valid=None,
-        tradeid=0,
-        **kwargs
+            self,
+            owner,
+            data,
+            size,
+            price=None,
+            plimit=None,
+            exectype=None,
+            valid=None,
+            tradeid=0,
+            **kwargs
     ):
 
         order = self._makeorder(
@@ -573,8 +581,8 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
                     if order.orderId == trade.order.orderId:
 
                         if (
-                            trade.orderStatus.status == self.SUBMITTED
-                            and trade.filled == 0
+                                trade.orderStatus.status == self.SUBMITTED
+                                and trade.filled == 0
                         ):
                             if order.status != order.Accepted:
                                 order.accept(self)
