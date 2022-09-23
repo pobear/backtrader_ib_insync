@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="backtrader_ib_insync",
-    version="0.1.0",
+    version="0.2.1",
     description="Backtrader Interactive Brokers Store using ib_insync",
     long_description=long_description,
     license="GNU General Public License Version 3",
