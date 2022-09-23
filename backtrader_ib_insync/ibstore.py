@@ -1142,7 +1142,15 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         """Proxy to Trades"""
         return self.ib.trades()
 
-    def req_open_orders(self):
+    def req_open_orders(self, contract=None):
+        if contract:
+            open_trades = self.ib.openTrades()
+            return [
+                trade.order
+                for trade in open_trades
+                if trade.contract.conId == contract.conId
+            ]
+
         return self.ib.openOrders()
 
     def req_positions(self):

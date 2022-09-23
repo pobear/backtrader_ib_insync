@@ -328,7 +328,7 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         self.ibstore.stop()
 
     def get_open_orders(self, owner, data):
-        ib_open_orders = self.ibstore.req_open_orders()
+        ib_open_orders = self.ibstore.req_open_orders(contract=data.tradecontract)
 
         for ib_order in ib_open_orders:
             self.open_orders.append(self.get_btorder(owner, data, ib_order))
@@ -472,17 +472,17 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         return IBCommInfo(mult=mult, stocklike=stocklike)
 
     def _makeorder(
-            self,
-            action,
-            owner,
-            data,
-            size,
-            price=None,
-            plimit=None,
-            exectype=None,
-            valid=None,
-            tradeid=0,
-            **kwargs
+        self,
+        action,
+        owner,
+        data,
+        size,
+        price=None,
+        plimit=None,
+        exectype=None,
+        valid=None,
+        tradeid=0,
+        **kwargs
     ):
 
         order = IBOrder(
@@ -504,16 +504,16 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         return order
 
     def buy(
-            self,
-            owner,
-            data,
-            size,
-            price=None,
-            plimit=None,
-            exectype=None,
-            valid=None,
-            tradeid=0,
-            **kwargs
+        self,
+        owner,
+        data,
+        size,
+        price=None,
+        plimit=None,
+        exectype=None,
+        valid=None,
+        tradeid=0,
+        **kwargs
     ):
 
         order = self._makeorder(
@@ -523,16 +523,16 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         return self.submit(order)
 
     def sell(
-            self,
-            owner,
-            data,
-            size,
-            price=None,
-            plimit=None,
-            exectype=None,
-            valid=None,
-            tradeid=0,
-            **kwargs
+        self,
+        owner,
+        data,
+        size,
+        price=None,
+        plimit=None,
+        exectype=None,
+        valid=None,
+        tradeid=0,
+        **kwargs
     ):
 
         order = self._makeorder(
@@ -580,13 +580,34 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
                 for trade in trades:
                     if order.orderId == trade.order.orderId:
 
-                        if (
-                                trade.orderStatus.status == self.SUBMITTED
-                                and trade.filled == 0
-                        ):
-                            if order.status != order.Accepted:
-                                order.accept(self)
-                                self.notify(order)
+                        if trade.orderStatus.status == self.SUBMITTED:
+                            if trade.orderStatus.filled == 0:
+                                if order.status != order.Accepted:
+                                    order.accept(self)
+                                    self.notify(order)
+                                continue
+
+                            if trade.orderStatus.remaining > 0:
+                                order.partial()
+                            else:
+                                order.completed()
+                                self.open_orders.remove(order)
+
+                            order.executed.price = trade.orderStatus.avgFillPrice
+                            order.executed.size = trade.orderStatus.filled
+                            order.executed.remsize = trade.orderStatus.remaining
+                            self.notify(order)
+
+                        elif trade.orderStatus.status == self.FILLED:
+                            # These two are kept inside the order until execdetails and
+                            # commission are all in place - commission is the last to come
+                            order.executed.price = trade.orderStatus.avgFillPrice
+                            order.executed.size = trade.orderStatus.filled
+                            order.executed.remsize = trade.orderStatus.remaining
+
+                            order.completed()
+                            self.open_orders.remove(order)
+                            self.notify(order)
 
                         elif trade.orderStatus.status == self.CANCELLED:
                             # duplicate detection
@@ -626,13 +647,6 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
                             if order.status == order.Rejected:  # duplicate detection
                                 pass
                             order.reject(self)
-                            self.open_orders.remove(order)
-                            self.notify(order)
-
-                        elif trade.orderStatus.status in [self.SUBMITTED, self.FILLED]:
-                            # These two are kept inside the order until execdetails and
-                            # commission are all in place - commission is the last to come
-                            order.completed()
                             self.open_orders.remove(order)
                             self.notify(order)
 
