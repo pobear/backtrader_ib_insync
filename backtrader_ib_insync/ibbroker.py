@@ -222,6 +222,12 @@ class IBOrder(OrderBase, ib_insync.order.Order):
         for k in kwargs:
             setattr(self, (not hasattr(self, k)) * "m_" + k, kwargs[k])
 
+    def __eq__(self, other):
+        return other is not None and self.orderId == other.orderId
+
+    def __ne__(self, other):
+        return self.orderId != other.orderId
+
 
 class IBCommInfo(CommInfoBase):
     """
@@ -423,10 +429,16 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
         return order
 
     def modify(self, order, price, pricelimit=None):
+        is_order_opening = False
         for ord in self.open_orders:
             if ord.orderId == order.orderId:
+                is_order_opening = True
                 self.open_orders.remove(ord)
                 break
+
+        # 订单已经关闭直接返回
+        if not is_order_opening:
+            return None
 
         # 修改Backtrader的Order相关价格
         order.price = order.created.price = price
@@ -445,7 +457,14 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
             if pricelimit is not None:
                 order.lmtPrice = pricelimit
 
-        trade = self.ibstore.place_order(order.orderId, order.data.tradecontract, order)
+        try:
+            trade = self.ibstore.place_order(
+                order.orderId, order.data.tradecontract, order
+            )
+        except AssertionError:
+            # 订单失效返回None
+            return None
+
         print("modify order: trade={}".format(trade))
         if trade.orderStatus.status == self.FILLED:
             order.completed()
@@ -579,6 +598,7 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
             for order in self.open_orders:
                 for trade in trades:
                     if order.orderId == trade.order.orderId:
+                        print("$$$$orderStatus={}".format(trade.orderStatus))
 
                         if trade.orderStatus.status == self.SUBMITTED:
                             if trade.orderStatus.filled == 0:
@@ -658,8 +678,7 @@ class IBBroker(with_metaclass(MetaIBBroker, BrokerBase)):
                             # programmer but the demo account sent it back at random times with
                             # "filled"
                             self.notify(order)
-                        else:  # Unknown status ...
-                            pass
+
         return
 
     # def push_execution(self, ex):
