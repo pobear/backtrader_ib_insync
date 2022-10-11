@@ -262,7 +262,7 @@ class IBStore(with_metaclass(MetaSingleton, object)):
             util.logToConsole(level=logging.DEBUG)
 
         # util.patchAsyncio()
-        # util.startLoop()
+        util.startLoop()
 
         self.ib = IB()
 
@@ -572,7 +572,9 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
         return q
 
-    def req_real_time_bars(self, contract, what="MIDPOINT", useRTH=False, duration=5):
+    def req_real_time_bars(
+        self, contract, what="MIDPOINT", useRTH=False, duration=5, onBarUpdate=None
+    ):
         """Creates a request for (5 seconds) Real Time Bars
 
         Params:
@@ -585,16 +587,22 @@ class IBStore(with_metaclass(MetaSingleton, object)):
         Returns:
           - a Queue the client can wait on to receive a RTVolume instance
         """
-        # get a ticker/queue for identification/data delivery
-        q = self.get_ticker_queue()
-
         rtb = self.ib.reqRealTimeBars(
             contract, duration, whatToShow=what, useRTH=useRTH
         )
-        self.ib.sleep(duration)
-        for bar in rtb:
-            q.put(bar)
-        return q
+
+        if onBarUpdate is not None:
+            rtb.updateEvent += onBarUpdate
+            print(rtb.updateEvent)
+            return self.get_ticker_queue()
+        else:
+            # get a ticker/queue for identification/data delivery
+            q = self.get_ticker_queue()
+            self.ib.sleep(duration)
+            for bar in rtb:
+                q.put(bar)
+
+            return q
 
     def req_mkt_data(self, contract, what=None):
         """Creates a MarketData subscription
@@ -1155,11 +1163,14 @@ class IBStore(with_metaclass(MetaSingleton, object)):
 
     def req_positions(self):
         """Proxy to reqPositions"""
-        positions = self.ib.reqPositions()
+        # 空仓的时返回是当前合约Position空对象
+        # positions = self.ib.reqPositions()
+        positions = self.ib.positions()
+        # 空仓的时返回是空数组，所以需要重置原先的仓位数据
+        self.positions = collections.defaultdict(Position)
         print("positions={}".format(positions))
         for p in positions:
-            position = Position(p.position, p.avgCost)
-            self.positions[p.contract.conId] = position
+            self.positions[p.contract.conId] = Position(p.position, p.avgCost)
 
         return positions
 

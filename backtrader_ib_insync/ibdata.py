@@ -516,10 +516,12 @@ class IBData(with_metaclass(MetaIBData, DataBase)):
         elif self.p.backfill_start:
             self.put_notification(self.DELAYED)
 
-            dtline = self.lines.datetime
-            dtbegin = num2date(dtline[-1]) if len(dtline) > 1 else None
-            print("st_start:dtbegin={}".format(dtbegin))
-            dtend = None
+            # dtline = self.lines.datetime
+            # dtbegin = num2date(dtline[-1]) if len(dtline) > 1 else None
+            # print("st_start:dtbegin={}".format(dtbegin))
+
+            # TODO 历史数据取离当前时间能获取的最大匹配，防止隔周（周一）不能取到完整数据
+            dtbegin = dtend = None
             self.qhist = self.ibstore.req_historical_data_ex(
                 contract=self.contract,
                 enddate=dtend,
